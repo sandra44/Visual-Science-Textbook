@@ -23,9 +23,11 @@ function Leaf({ loadPdf, info, chapter, onVisualizeTopic }: {
   const [ready, setReady] = useState(false);
   const [ratio, setRatio] = useState(.74);
   const [error, setError] = useState('');
+  const [slow, setSlow] = useState(false);
   useEffect(() => {
     let active = true;
     let render: pdfjs.RenderTask | undefined;
+    const timer = window.setTimeout(()=>setSlow(true), 8000);
     async function paint() {
       const doc = await loadPdf(chapter.pdfUrl ?? '/Science Textbook.pdf');
       if (!active) return;
@@ -40,11 +42,12 @@ function Leaf({ loadPdf, info, chapter, onVisualizeTopic }: {
       if (active) setReady(true);
     }
     paint().catch(e => { if (active) setError(String(e)); });
-    return () => { active = false; render?.cancel(); };
+    return () => { active = false; window.clearTimeout(timer); render?.cancel(); };
   }, [loadPdf, chapter, info]);
   return <article aria-label={`Book page ${info.bookPage}`} className="reader-leaf" style={{width:`min(100cqw, ${ratio*100}cqh)`, aspectRatio:ratio}}>
     <canvas ref={canvas} className="block h-full w-full" aria-label={`Textbook page ${info.bookPage}: ${chapter.title}`}/>
-    {!ready && <p className="absolute inset-0 grid place-content-center text-sm">{error ? <>Could not open this page: {error}{chapter.pdfUrl && <a className="underline" href={`https://ncert.nic.in/textbook/pdf/${chapter.pdfUrl.split('/').pop()}`} target="_blank" rel="noreferrer">Open chapter at NCERT</a>}</> : 'Opening page…'}</p>}
+    {!ready && <p className="absolute inset-0 grid place-content-center text-sm">{error ? `Could not open this page: ${error}` : slow && chapter.pdfUrl ? 'Still loading this chapter from NCERT…' : 'Opening page…'}
+      {(slow || error) && chapter.pdfUrl && <a className="underline" href={`https://ncert.nic.in/textbook/pdf/${chapter.pdfUrl.split('/').pop()}`} target="_blank" rel="noreferrer">Open chapter at NCERT</a>}</p>}
     {ready && info.topics.map(t=>{
       const visual = bookVisual(t.curatedSimId,t.number);
       if (!visual) return null;
@@ -61,7 +64,9 @@ export function FlipbookView({index,page,onNavigate,onToggleChapters,...actions}
   const [loadPdf] = useState<LoadPdf>(()=>(url: string)=>{
     let task=documents.get(url);
     if (!task) {
-      task=pdfjs.getDocument(url);
+      task=pdfjs.getDocument(url.startsWith('/book/')
+        ? {url, disableStream:true, disableAutoFetch:true, rangeChunkSize:262144}
+        : url);
       documents.set(url,task);
     }
     return task.promise;
